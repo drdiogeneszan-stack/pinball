@@ -164,8 +164,11 @@ canvas#table {
          patente, de <b>Cadet</b> a <b>Fleet Admiral</b>.</p>
       <dl id="keys"></dl>
       <p style="margin:16px 0 0">Complete os três alvos de um lado para subir o multiplicador.
-         Acerte as três rampas do topo para cumprir a missão. O buraco âmbar é o
-         <b>hyperspace</b>: engole a bola e devolve em alta velocidade.</p>
+         Acerte as três rampas do topo para cumprir a missão.</p>
+      <p><b>Skill shot:</b> uma luz corre pela calha de lançamento. Solte o êmbolo
+         quando ela estiver no alto — quanto mais acima, mais vale.</p>
+      <p><b>Hyperspace:</b> o buraco âmbar engole a bola e a cospe de volta na calha.
+         Cada entrada sobe um degrau: Gravity Well, Bola Extra, Jackpot e Replay.</p>
       <button class="close">FECHAR</button>
     </div>
   </div>
@@ -286,7 +289,12 @@ const G = {
   msgs: [],                  // floating score popups
   banner: null,              // { text, sub, life }
   shake: { x: 0, y: 0, t: 0 },
-  mission: "",
+  disp: { text: "", until: 0, prio: 0, blinkUntil: 0 },
+  seq: null,         // end-of-ball bonus tally
+  skillIdx: 0,       // which lane lamp the chase is on
+  skillFreeze: -1,   // lamp frozen at the moment of launch
+  skillUntil: 0,
+  hyperStep: 0,      // rung of the hyperspace ladder
   fx: [],            // shockwave rings
   shown: 0,          // score the console is currently showing (rolls up)
   strobe: 0,         // whole-table lamp strobe on promotion
@@ -300,37 +308,84 @@ const ball = { x: 370, y: 706, vx: 0, vy: 0, r: BALL_R, trail: [], live: false, 
    3. Audio — small synth, no assets
    ========================================================================== */
 
-let AC = null;
+let AC = null, noiseBuf = null, master = null;
+
 function audio() {
-  if (!AC) { try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return null; } }
+  if (!AC) {
+    try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return null; }
+    master = AC.createGain();
+    master.gain.value = 0.9;
+    master.connect(AC.destination);
+    // one short noise buffer, reused by every mechanical click
+    noiseBuf = AC.createBuffer(1, 4096, AC.sampleRate);
+    const d = noiseBuf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  }
   if (AC.state === "suspended") AC.resume();
   return AC;
 }
-function blip(freq, dur, type, gain, slideTo) {
-  if (!G.sound) return;
+
+/* The original's foley was dry, short and synthetic — 8-bit blips and hard
+   mechanical clicks with no reverb tail. Everything here is under 400ms and
+   built from an oscillator or a burst of the noise buffer. While the table is
+   tilted the whole bank is muted except the tilt itself: the sudden silence is
+   half of what makes a tilt feel like a punishment. */
+function gated(force) { return G.sound && (force || !G.tilted); }
+
+function tone(o) {
   const ac = audio(); if (!ac) return;
-  const o = ac.createOscillator(), g = ac.createGain();
-  o.type = type || "square";
-  o.frequency.setValueAtTime(freq, ac.currentTime);
-  if (slideTo) o.frequency.exponentialRampToValueAtTime(Math.max(40, slideTo), ac.currentTime + dur);
-  g.gain.setValueAtTime(0.0001, ac.currentTime);
-  g.gain.exponentialRampToValueAtTime(gain || 0.09, ac.currentTime + 0.008);
-  g.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + dur);
-  o.connect(g); g.connect(ac.destination);
-  o.start(); o.stop(ac.currentTime + dur + 0.02);
+  const osc = ac.createOscillator(), g = ac.createGain();
+  const t = ac.currentTime, dur = o.dur || 0.1;
+  osc.type = o.type || "square";
+  osc.frequency.setValueAtTime(o.f, t);
+  if (o.to) osc.frequency.exponentialRampToValueAtTime(Math.max(30, o.to), t + dur);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(o.gain || 0.08, t + (o.attack || 0.005));
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  osc.connect(g); g.connect(master);
+  osc.start(t + (o.delay || 0));
+  osc.stop(t + dur + (o.delay || 0) + 0.02);
 }
+
+function click(o) {
+  const ac = audio(); if (!ac || !noiseBuf) return;
+  const src = ac.createBufferSource(), g = ac.createGain(), f = ac.createBiquadFilter();
+  const t = ac.currentTime, dur = o.dur || 0.035;
+  src.buffer = noiseBuf;
+  f.type = o.lowpass ? "lowpass" : "bandpass";
+  f.frequency.value = o.f || 2200;
+  f.Q.value = o.q || 1.2;
+  g.gain.setValueAtTime(o.gain || 0.14, t);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  src.connect(f); f.connect(g); g.connect(master);
+  src.start(t); src.stop(t + dur + 0.01);
+}
+
 const SFX = {
-  flip:  () => blip(180, 0.05, "square", 0.05),
-  bump:  () => blip(660, 0.13, "triangle", 0.12, 1180),
-  sling: () => blip(430, 0.09, "square", 0.09, 700),
-  wall:  () => blip(150, 0.035, "sine", 0.035),
-  tgt:   () => blip(880, 0.1, "square", 0.09, 1320),
-  lane:  () => blip(1180, 0.08, "sine", 0.07),
-  hyper: () => { blip(300, 0.4, "sawtooth", 0.08, 1600); setTimeout(() => blip(1400, 0.25, "sine", 0.07, 400), 260); },
-  launch:() => blip(120, 0.34, "sawtooth", 0.1, 900),
-  drain: () => blip(420, 0.5, "sawtooth", 0.09, 70),
-  rank:  () => { [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => blip(f, 0.16, "square", 0.09), i * 90)); },
-  tilt:  () => blip(90, 0.6, "sawtooth", 0.12, 55),
+  // flippers: two different mechanical clicks, up harder than down
+  flip:     () => { if (!gated()) return; click({ f: 2600, gain: .17, dur: .035 }); tone({ f: 150, to: 90, dur: .05, type: "square", gain: .05 }); },
+  flipDown: () => { if (!gated()) return; click({ f: 1500, gain: .08, dur: .028 }); },
+  // plunger: one notch of the ratchet per step of charge, then a sproing
+  ratchet:  () => { if (!gated()) return; click({ f: 3400, gain: .09, dur: .02, q: 3 }); },
+  launch:   () => { if (!gated()) return; tone({ f: 520, to: 90, dur: .28, type: "sawtooth", gain: .12 });
+                    click({ f: 900, gain: .12, dur: .06, lowpass: true }); },
+  // table
+  bump:     () => { if (!gated()) return; tone({ f: 700, to: 1250, dur: .1, type: "square", gain: .11 }); },
+  sling:    () => { if (!gated()) return; click({ f: 1800, gain: .16, dur: .04 }); tone({ f: 420, to: 700, dur: .07, gain: .07 }); },
+  tgt:      () => { if (!gated()) return; click({ f: 800, gain: .13, dur: .05, lowpass: true }); tone({ f: 980, dur: .07, type: "triangle", gain: .07 }); },
+  lane:     () => { if (!gated()) return; tone({ f: 980, dur: .05, type: "sine", gain: .07 });
+                    tone({ f: 1470, dur: .06, type: "sine", gain: .07, delay: .05 }); },
+  wall:     () => { if (!gated()) return; click({ f: 420, gain: .05, dur: .025, lowpass: true }); },
+  // rewards
+  tally:    () => { if (!gated(true)) return; tone({ f: 1600, dur: .03, type: "square", gain: .05 }); },
+  skill:    () => { if (!gated()) return; [880, 1320, 1760].forEach((f, i) => tone({ f, dur: .09, type: "square", gain: .09, delay: i * .06 })); },
+  prize:    () => { if (!gated()) return; [523, 659, 784, 1046, 1318].forEach((f, i) => tone({ f, dur: .13, type: "square", gain: .09, delay: i * .07 })); },
+  rank:     () => { if (!gated()) return; [392, 523, 659, 784, 1046].forEach((f, i) => tone({ f, dur: .18, type: "square", gain: .1, delay: i * .09 })); },
+  hyper:    () => { if (!gated()) return; tone({ f: 180, to: 1900, dur: .42, type: "sawtooth", gain: .09 }); },
+  eject:    () => { if (!gated()) return; tone({ f: 1400, to: 260, dur: .2, type: "square", gain: .1 }); click({ f: 700, gain: .14, dur: .05, lowpass: true }); },
+  // losses
+  drain:    () => { if (!gated(true)) return; tone({ f: 380, to: 55, dur: .55, type: "sawtooth", gain: .11 }); },
+  tilt:     () => { if (!G.sound) return; tone({ f: 220, to: 40, dur: .8, type: "sawtooth", gain: .14 }); },
 };
 
 /* ==========================================================================
@@ -583,6 +638,7 @@ function checkRank() {
     G.strobe = 1.3;
     SFX.rank();
     banner("PROMOVIDO", RANKS[idx][0], 2.6);
+    say("PROMOVIDO A " + RANKS[idx][0], 3, 6, 1.6);
   }
 }
 
@@ -598,7 +654,8 @@ function hitBumper(bp) {
   award(500, bp.x, bp.y - 24);
   if (G.bumperCount % 25 === 0) {
     award(7500, 180, 200, "COMBUSTÍVEL +7.500");
-    banner("REATOR CARREGADO", "25 impactos", 1.8);
+    banner("REATOR CARREGADO", "", 1.8);
+    say("REATOR CARREGADO", 2, 4, 1);
   }
 }
 
@@ -617,7 +674,8 @@ function hitTarget(t) {
   if (bank.every(x => x.down)) {
     G.mult = Math.min(9, G.mult + 1);
     award(6000, 180, 260, "BANCO COMPLETO");
-    banner("BÔNUS ×" + G.mult, t.side < 0 ? "Alvos a bombordo" : "Alvos a estibordo", 2);
+    banner("BÔNUS ×" + G.mult, "", 2);
+    say("MULTIPLICADOR  ×" + G.mult, 2.2, 4, 1);
     setTimeout(() => bank.forEach(x => { x.down = false; }), 1600);
   }
   paintConsole();
@@ -628,26 +686,54 @@ function hitLane(ln) {
   award(400, ln.x, ln.y + 26);
   if (LANES.every(l => l.lit)) {
     award(12000, 180, 110, "RAMPA COMPLETA");
-    banner("MISSÃO CUMPRIDA", "Rampa de aproximação", 2.2);
+    banner("MISSÃO CUMPRIDA", "", 2.2);
+    say("APROXIMAÇÃO COMPLETA", 2.4, 4, 1.2);
     LANES.forEach(l => { l.lit = false; });
   }
   paintConsole();
 }
 
+// Each trip into hyperspace climbs one rung of a ladder, and the ball is spat
+// back out through the launch lane instead of popping straight up.
+const LADDER = [
+  { name: "GRAVITY WELL", points: 5000 },
+  { name: "BOLA EXTRA", points: 2000, extraBall: true },
+  { name: "JACKPOT", points: 50000, mult: true },
+  { name: "REPLAY", points: 100000, extraBall: true },
+];
+
 function enterHyperspace() {
-  ball.captured = 1.0;
+  ball.captured = 1.25;
   ball.vx = ball.vy = 0;
   ball.x = HYPER.x; ball.y = HYPER.y;
   HYPER.hold = 1.0; HYPER.flash = 1;
   ring(HYPER.x, HYPER.y, 4, 74, "#F0912A", 1.5);
   SFX.hyper();
-  award(3500, HYPER.x, HYPER.y - 26, "HYPERSPACE");
-  banner("HYPERSPACE", "Salto de dobra", 1.4);
+
+  const rung = LADDER[Math.min(G.hyperStep, LADDER.length - 1)];
+  G.hyperStep = Math.min(LADDER.length, G.hyperStep + 1);
+  const pts = rung.mult ? rung.points * G.mult : rung.points;
+  G.score += pts;
+  if (rung.extraBall) G.ballsTotal++;
+  banner(rung.name, rung.extraBall ? "Bola extra concedida" : "", 2);
+  say(rung.name + "  " + pts.toLocaleString("pt-BR"), 2.6, 7, 1.4);
+  G.strobe = Math.max(G.strobe, 0.7);
+  checkRank();
+  paintConsole();
+  setTimeout(SFX.prize, 260);
+
   setTimeout(() => {
     HYPER.hold = 0;
-    ball.x = HYPER.x + 6; ball.y = HYPER.y - 4;
-    ball.vx = 190; ball.vy = -1080;
-  }, 1000);
+    if (G.hyperStep >= LADDER.length) G.hyperStep = 0;   // ladder resets
+    ball.x = 370; ball.y = 700; ball.vx = 0; ball.vy = 0;
+    ball.trail.length = 0;
+    SFX.eject();
+    setTimeout(() => {
+      ball.vy = -(LAUNCH_MIN + 220);
+      G.lanePulse = 1;
+      SFX.launch();
+    }, 420);
+  }, 1100);
 }
 
 function nudge(dx, dy) {
@@ -658,25 +744,51 @@ function nudge(dx, dy) {
   if (G.tilt >= 4) {
     G.tilted = true;
     SFX.tilt();
-    banner("TILT", "Flippers desativados até a próxima bola", 3);
-    status("TILT — a mesa foi empurrada demais");
+    G.msgs.length = 0;
+    banner("TILT", "", 2.2);
+    say("TILT", 99, 9);
   }
 }
 
+// Draining does not hand over to the next ball straight away: the original
+// paused, then tallied the bonus line by line while the score climbed in bursts.
+// The plunger stays dead until the tally finishes.
 function drain() {
   if (G.mode !== "play") return;
   G.flash = 1;
   SFX.drain();
-  const bonus = 1000 * G.mult;
-  G.score += bonus;
   G.mode = "drained";
   ball.live = false;
-  banner("BOLA PERDIDA", "Bônus final " + bonus.toLocaleString("pt-BR"), 2);
+
+  const downed = TARGETS.filter(t => t.down).length;
+  const lit = LANES.filter(l => l.lit).length;
+  const steps = [{ text: "FIM DA BOLA " + G.ball, points: 0, hold: 0.9 }];
+  if (downed) steps.push({ text: "ALVOS DERRUBADOS  " + downed, points: 500 * downed, hold: 0.6 });
+  if (lit) steps.push({ text: "RAMPAS ACESAS  " + lit, points: 300 * lit, hold: 0.6 });
+  if (G.bumperCount) steps.push({ text: "IMPACTOS  " + G.bumperCount, points: 20 * G.bumperCount, hold: 0.6 });
+  steps.push({ text: "BÔNUS DE BOLA  ×" + G.mult, points: 1000 * G.mult, hold: 0.7 });
+  steps.push({ text: "", points: 0, hold: 0.5 });
+
+  G.seq = { steps, i: -1, t: 0 };
+  banner("BOLA PERDIDA", "", 1.6);
   paintConsole();
-  setTimeout(() => {
+}
+
+function stepSequence(dt) {
+  const q = G.seq;
+  q.t -= dt;
+  if (q.t > 0) return;
+  q.i++;
+  if (q.i >= q.steps.length) {
+    G.seq = null;
     if (G.ball >= G.ballsTotal) gameOver();
     else { G.ball++; newBall(); }
-  }, 1700);
+    return;
+  }
+  const st = q.steps[q.i];
+  q.t = st.hold;
+  if (st.text) say(st.text, st.hold + .2, 3);
+  if (st.points) { G.score += st.points; SFX.tally(); checkRank(); paintConsole(); }
 }
 
 function gameOver() {
@@ -698,6 +810,9 @@ function newBall() {
   G.tilt = 0; G.tilted = false;
   G.charge = 0; G.charging = false;
   G.mode = "play";
+  // a new ball clears the tilt, so the TILT message must go with it — it was
+  // posted at priority 9 for 99s and would otherwise outlive the whole game
+  G.disp = { text: "", until: 0, prio: 0, blinkUntil: 0 };
   LANES.forEach(l => { l.lit = false; });
   banner("BOLA " + G.ball, TOUCH ? "Segure o canto inferior direito e solte" : "Segure ESPAÇO e solte", 1.6);
   status(TOUCH ? "Bola " + G.ball + " — segure o canto inferior direito para lançar"
@@ -710,12 +825,27 @@ function newGame() {
   G.msgs.length = 0;
   G.fx.length = 0;
   G.shown = 0;
+  G.seq = null;      // a restart must abandon any bonus tally still running
+  G.hyperStep = 0;
+  G.ballsTotal = 3;
+  G.skillUntil = 0; G.skillFreeze = -1;
   TARGETS.forEach(t => { t.down = false; });
   newBall();
 }
 
 function banner(text, sub, life) { G.banner = { text, sub, life, max: life }; }
-function status(t) { G.mission = t; }
+// The original narrated everything on one line in clipped academy jargon, and
+// it switched instantly — no sliding, no fading. Important events blinked.
+function say(text, secs, prio, blinkFor) {
+  if (perfNow < G.disp.until && prio < G.disp.prio) return;
+  G.disp = {
+    text: text,
+    until: perfNow + secs * 1000,
+    prio: prio || 0,
+    blinkUntil: perfNow + (blinkFor || 0) * 1000,
+  };
+}
+function status(t) { say(t, 4, 0); }
 
 /* ==========================================================================
    6. Rendering
@@ -806,6 +936,11 @@ const LAMPS = {
           { x: 208, y: 566, r: 5, col: BR.amber }],
   hyper: [{ x: 74, y: 372, r: 6, col: BR.amber }],
   rank: RANK_ARC,
+  skill: [{ x: 370, y: 660, r: 5, col: BR.amber }, { x: 370, y: 620, r: 5, col: BR.amber },
+          { x: 370, y: 580, r: 5, col: BR.amber }, { x: 370, y: 540, r: 5, col: BR.amber },
+          { x: 370, y: 500, r: 5, col: BR.amber }],
+  ladder: [{ x: 324, y: 330, r: 5.5, col: BR.cyan }, { x: 324, y: 352, r: 5.5, col: BR.cyan },
+           { x: 324, y: 374, r: 5.5, col: BR.amber }, { x: 324, y: 396, r: 5.5, col: "#E4536E" }],
   chase: [{ x: 96, y: 300, r: 5, col: BR.cyan }, { x: 264, y: 300, r: 5, col: BR.cyan },
           { x: 112, y: 330, r: 5, col: BR.amber }, { x: 248, y: 330, r: 5, col: BR.amber }],
 };
@@ -833,10 +968,15 @@ function drawLamp(g, L, lv, dim) {
 // Lamps ease between states rather than snapping, so the table breathes. In
 // attract mode a wave runs across every insert; on promotion they all strobe.
 function lampTarget(on, i) {
+  if (G.tilted) return 0;                       // power cut: everything dark
   if (G.strobe > 0) return (Math.floor(perfNow / 70) % 2) ? 1 : 0.12;
   if (G.mode === "attract" || G.mode === "over") {
-    const w = Math.sin(perfNow / 300 - i * 0.55);
-    return Math.max(on ? 1 : 0, w > 0 ? w * w * w : 0);
+    // three hard on/off patterns in rotation — the original never faded lamps,
+    // the life came from the rhythm of the blink
+    const pattern = Math.floor(perfNow / 5000) % 3;
+    if (pattern === 0) return (Math.floor(perfNow / 90) % 26) === (i % 26) ? 1 : 0;
+    if (pattern === 1) return (Math.floor(perfNow / 380) % 2) === (i % 2) ? 1 : 0;
+    return (Math.floor(perfNow / 120) % 8) === (i % 8) ? 1 : 0;
   }
   return on ? 1 : 0;
 }
@@ -845,7 +985,11 @@ function drawLamps(g, dt) {
   let idx = 0;
   const run = (list, isOn, dim) => list.forEach((L, i) => {
     const t = lampTarget(isOn(i), idx++);
-    L.lv = (L.lv === undefined) ? t : L.lv + (t - L.lv) * Math.min(1, dt * 13);
+    // Tilt blackout and the attract patterns are instant. Easing a 90ms sweep
+    // would smear it into mush — the original's lamps were hard on/off, and the
+    // life came from the rhythm. Only in-play state changes get the soft fade.
+    const instant = G.tilted || G.mode === "attract" || G.mode === "over" || L.lv === undefined;
+    L.lv = instant ? t : L.lv + (t - L.lv) * Math.min(1, dt * 13);
     drawLamp(g, L, L.lv, dim);
   });
   run(LAMPS.lanes, i => LANES[i].lit);
@@ -855,6 +999,17 @@ function drawLamps(g, dt) {
   run(LAMPS.rank, i => i <= G.rankIdx);
   const c = Math.floor(perfNow / 190) % 4;
   run(LAMPS.chase, i => i === c);
+  run(LAMPS.ladder, i => i < G.hyperStep);
+  // the lane chase is deliberately binary — no easing — because the player is
+  // timing a plunger release against it
+  const frozen = perfNow < G.skillUntil;
+  LAMPS.skill.forEach((L, i) => {
+    let on;
+    if (frozen) on = (i === G.skillFreeze) && (Math.floor(perfNow / 90) % 2 === 0);
+    else on = (G.mode === "play" && !G.tilted && ball.x > 348 && ball.y > 560) && i === G.skillIdx;
+    L.lv = on ? 1 : 0;
+    drawLamp(g, L, L.lv);
+  });
 }
 
 /* ==========================================================================
@@ -1019,6 +1174,22 @@ function buildDeck() {
   label("MISSION", 320, 170, 8, "rgba(240,145,42,.8)", 1.5);
   label("DEPLOY", 180, 690, 9, "rgba(240,145,42,.55)", 4);
 
+  // hyperspace ladder legend, right-aligned into the lamps on the right flank
+  g.save();
+  g.textAlign = "right";
+  g.font = "900 7px Lato, Tahoma, sans-serif";
+  [["GRAVITY WELL", 330, "rgba(87,194,224,.85)"],
+   ["BOLA EXTRA", 352, "rgba(87,194,224,.85)"],
+   ["JACKPOT", 374, "rgba(240,145,42,.9)"],
+   ["REPLAY", 396, "rgba(228,83,110,.9)"]].forEach(([t, y, col]) => {
+    g.fillStyle = "rgba(0,0,0,.6)"; g.fillText(t, 315, y + 3.5);
+    g.fillStyle = col; g.fillText(t, 314, y + 2.5);
+  });
+  g.textAlign = "center";
+  g.restore();
+  label("HYPERSPACE", 324, 314, 7.5, "rgba(237,244,246,.8)", 2);
+  label("SKILL SHOT", 370, 452, 8, "rgba(240,145,42,.9)", 2, Math.PI / 2);
+
   // vignette: pulls the eye to the middle of the deck and stops the painted
   // zones from flattening out at the edges
   const vg = g.createRadialGradient(TW / 2, TH * .44, TW * .28, TW / 2, TH * .44, TW * .98);
@@ -1139,7 +1310,13 @@ function drawTargetPiece(g, t) {
 }
 
 function drawFlipper(g, f) {
-  const tx = f.px + Math.cos(f.a) * f.len, ty = f.py + Math.sin(f.a) * f.len;
+  // The original's flipper was three or four pre-rendered frames, so it seemed
+  // to snap between poses. Quantising the drawn angle brings that mechanical
+  // feel back without touching the continuous angle the physics runs on.
+  const span = f.up - f.rest;
+  const q = Math.round(((f.a - f.rest) / span) * 3) / 3;
+  const a = f.rest + span * q;
+  const tx = f.px + Math.cos(a) * f.len, ty = f.py + Math.sin(a) * f.len;
   g.lineCap = "round";
   g.beginPath(); g.moveTo(f.px + 3, f.py + 5); g.lineTo(tx + 3, ty + 5);
   g.lineWidth = (f.r + 4) * 2; g.strokeStyle = "rgba(0,0,0,.5)"; g.stroke();
@@ -1152,7 +1329,7 @@ function drawFlipper(g, f) {
   g.beginPath(); g.moveTo(f.px, f.py); g.lineTo(tx, ty);
   g.lineWidth = f.r * 2; g.strokeStyle = grad; g.stroke();
   g.restore();
-  const nx = -Math.sin(f.a), ny = Math.cos(f.a);
+  const nx = -Math.sin(a), ny = Math.cos(a);
   g.beginPath();
   g.moveTo(f.px - nx * f.r * .45, f.py - ny * f.r * .45);
   g.lineTo(tx - nx * f.r * .45, ty - ny * f.r * .45);
@@ -1390,10 +1567,22 @@ function drawPanel() {
   ctx.fillStyle = "rgba(240,145,42,.85)";
   ctx.fillText(G.hi.toLocaleString("pt-BR"), 362, y0 + 97);
 
-  // mission line
-  ctx.font = "400 9.5px Lato, Tahoma, sans-serif";
-  ctx.fillStyle = "rgba(237,244,246,.65)";
-  ctx.fillText(G.mission || "", 16, y0 + 126);
+  // message line — switches instantly, blinks hard for the big events
+  const d = G.disp;
+  const alive = perfNow < d.until && d.text;
+  const blinking = alive && perfNow < d.blinkUntil;
+  const lit = !blinking || (Math.floor(perfNow / 150) % 2 === 0);
+  const my = Math.min(y0 + 126, y0 + h - 10);
+  ctx.fillStyle = "rgba(3,6,14,.75)";
+  ctx.fillRect(14, my - 12, SCR_W - 28, 17);
+  if (alive && lit) {
+    ctx.font = "700 10.5px Lato, Tahoma, sans-serif";
+    ctx.fillStyle = blinking ? BR.amber : "rgba(150,214,236,.95)";
+    ctx.save();
+    let cx = 20;
+    for (const ch of d.text) { ctx.fillText(ch, cx, my); cx += ctx.measureText(ch).width + 1.3; }
+    ctx.restore();
+  }
 }
 
 function drawOverlays() {
@@ -1501,10 +1690,19 @@ function frame(now) {
   if (G.mode === "paused") { drawTable(0); return; }
 
   // plunger charge
-  if (G.charging && G.mode === "play" && ball.x > 348 && ball.y > 620) {
-    G.charge = Math.min(1, G.charge + dt / 1.1);
+  // lane chase: 130ms a lamp, and the value of the skill shot rises up the lane
+  if (G.mode === "play" && ball.x > 348 && ball.y > 560 && perfNow >= G.skillUntil) {
+    G.skillIdx = Math.floor(perfNow / 130) % LAMPS.skill.length;
   }
 
+  if (G.charging && G.mode === "play" && ball.x > 348 && ball.y > 620) {
+    const before = G.charge;
+    G.charge = Math.min(1, G.charge + dt / 1.1);
+    // one click per notch of the ratchet, the way the real plunger sounded
+    if (Math.floor(G.charge * 14) !== Math.floor(before * 14)) SFX.ratchet();
+  }
+
+  if (G.seq) stepSequence(dt);
   if (G.mode === "play" || G.mode === "drained") physics(dt);
   else { FLIPPERS.forEach(f => stepFlipper(f, dt)); }
 
@@ -1601,6 +1799,22 @@ addEventListener("keydown", e => {
   }
 });
 
+// Whichever lane lamp the chase happened to be on when the plunger let go is the
+// skill shot. Higher up the lane is worth more, so it rewards timing rather than
+// just yanking the plunger to full.
+function claimSkillShot() {
+  const i = G.skillIdx;
+  G.skillFreeze = i;
+  G.skillUntil = perfNow + 900;
+  const points = 5000 * (i + 1);
+  G.score += points;
+  SFX.skill();
+  say("SKILL SHOT  " + points.toLocaleString("pt-BR"), 2.2, 5, 0.9);
+  ring(370, LAMPS.skill[i].y, 4, 30, "#FFD9A6", 2.4);
+  checkRank();
+  paintConsole();
+}
+
 function releasePlunger() {
   if (!G.charging) return;
   G.charging = false;
@@ -1611,14 +1825,15 @@ function releasePlunger() {
     ball.vx = (Math.random() - 0.5) * 22;
     G.lanePulse = 1;
     SFX.launch();
+    claimSkillShot();
     status(TOUCH ? "Bola em jogo — toque na metade esquerda ou direita"
                  : "Bola em jogo — Z e / controlam os flippers");
   }
 }
 
 addEventListener("keyup", e => {
-  if (LEFT_KEYS.includes(e.code)) FLIPPERS[0].held = false;
-  if (RIGHT_KEYS.includes(e.code)) FLIPPERS[1].held = false;
+  if (LEFT_KEYS.includes(e.code) && FLIPPERS[0].held) { FLIPPERS[0].held = false; SFX.flipDown(); }
+  if (RIGHT_KEYS.includes(e.code) && FLIPPERS[1].held) { FLIPPERS[1].held = false; SFX.flipDown(); }
   if (e.code === "Space") releasePlunger();
 });
 
@@ -1650,8 +1865,8 @@ function releasePointer(id) {
   const role = touchRole.get(id);
   if (role === undefined) return;
   touchRole.delete(id);
-  if (role === "L") FLIPPERS[0].held = false;
-  else if (role === "R") FLIPPERS[1].held = false;
+  if (role === "L") { FLIPPERS[0].held = false; SFX.flipDown(); }
+  else if (role === "R") { FLIPPERS[1].held = false; SFX.flipDown(); }
   else releasePlunger();
 }
 addEventListener("pointerup", e => releasePointer(e.pointerId));

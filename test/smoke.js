@@ -34,7 +34,10 @@ for (let i = 0; i < 200 * 60; i++) {
   step(); if (!seen.includes(G.ball)) seen.push(G.ball);
   if (G.mode === 'over') break;
 }
-check('partida de 3 bolas', seen.join(',') === '1,2,3' && G.mode === 'over', 'bolas=' + seen.join(','));
+// a escada do hyperspace pode conceder bolas extras, entao o total e >= 3
+const consecutivas = seen.every((b, i) => b === i + 1);
+check('partida completa ate FIM DE JOGO', consecutivas && seen.length >= 3 && G.mode === 'over',
+      'bolas=' + seen.join(',') + '  total=' + G.ballsTotal);
 
 REPORT('');
 REPORT(fails === 0 ? '>>> TUDO OK' : '>>> ' + fails + ' FALHA(S)');
