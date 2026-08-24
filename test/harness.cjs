@@ -36,7 +36,10 @@ const THE_CANVAS = {
   getContext: () => stubCtx,
   toDataURL: () => 'data:image/png;base64,AAAA',
   addEventListener: rec(LISTENERS.canvas),
-  getBoundingClientRect: () => ({ left: 0, top: 0, width: globalThis.innerWidth, height: globalThis.innerHeight }),
+  // BOX simula a caixa CSS real do elemento, que no iOS pode divergir da janela
+  getBoundingClientRect: () => ({ left: 0, top: 0,
+    width: globalThis.BOX ? globalThis.BOX.w : globalThis.innerWidth,
+    height: globalThis.BOX ? globalThis.BOX.h : globalThis.innerHeight }),
   style: {},
 };
 
@@ -117,6 +120,8 @@ const LS = {
   clear: () => { for (const k in LSDATA) delete LSDATA[k]; },
 };
 
+globalThis.ResizeObserver = undefined;
+globalThis.BOX = null;
 globalThis.innerWidth = 480;
 globalThis.innerHeight = 900;
 
