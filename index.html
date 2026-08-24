@@ -504,7 +504,13 @@ const SFX = {
 const GRAV = 1400;
 const LAUNCH_MIN = 1500, LAUNCH_RANGE = 560;
 const SUBSTEPS = 7;
-const ROLL_FRICTION = 0.015;   // steel rail; the flipper keeps its own rubber grip
+const ROLL_FRICTION = 0.015;   // steel rail
+// A contact may never take more than this share of the ball's tangential speed.
+// Without it, one hard hit on the rubber had mu*jn large enough to zero the
+// along-surface motion outright, so the ball stopped dead on the flipper and
+// dribbled in place instead of running off the tip. Real contact only rubs while
+// the surfaces slide; once the ball starts rolling the scrubbing stops.
+const MAX_TANGENT_LOSS = 0.35;
 const MAXSPEED = 2100;   // 5px per substep, well under the ball radius
 
 function segCollide(b, ax, ay, bx, by, e, mu) {
@@ -538,7 +544,7 @@ function segCollide(b, ax, ay, bx, by, e, mu) {
     const tvx = b.vx - dot * nx, tvy = b.vy - dot * ny;
     const tv = Math.hypot(tvx, tvy);
     if (tv > 1e-6) {
-      const jt = Math.min(tv, muEff * jn);
+      const jt = Math.min(tv * MAX_TANGENT_LOSS, muEff * jn);
       b.vx -= tvx / tv * jt; b.vy -= tvy / tv * jt;
     }
   }
@@ -632,7 +638,7 @@ function flipperCollide(b, f) {
     const tvx = (b.vx - ux) - dot * nx, tvy = (b.vy - uy) - dot * ny;
     const tv = Math.hypot(tvx, tvy);
     if (tv > 1e-6) {
-      const jt = Math.min(tv, mu * jn);
+      const jt = Math.min(tv * MAX_TANGENT_LOSS, mu * jn);
       b.vx -= tvx / tv * jt; b.vy -= tvy / tv * jt;
     }
     return { speed: -vn };

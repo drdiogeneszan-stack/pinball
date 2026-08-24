@@ -4,7 +4,7 @@
  * index.html and the icons. Bump CACHE when the game changes: the old cache is
  * dropped on activate, so players get the new build instead of a stale one.
  */
-const CACHE = "imceler-pinball-v4";
+const CACHE = "imceler-pinball-v5";
 const ASSETS = ["./", "./index.html", "./icon-192.png", "./icon-512.png", "./manifest.webmanifest"];
 
 self.addEventListener("install", (e) => {
