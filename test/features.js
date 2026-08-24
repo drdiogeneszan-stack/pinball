@@ -55,7 +55,11 @@ for (let i = 0; i < 300 * 60; i++) {
   step(); if (!seen.includes(G.ball)) seen.push(G.ball);
   if (G.mode === 'over') break;
 }
-check('jogou as 4 bolas', seen.join(',') === '1,2,3,4' && G.mode === 'over', 'bolas=' + seen.join(','));
+// a bola pode cair no hyperspace durante o teste e ganhar outra extra, entao o
+// invariante e "jogou pelo menos as 4, em sequencia, e terminou"
+const emSequencia = seen.every((b, i) => b === i + 1);
+check('jogou as 4 bolas e terminou', emSequencia && seen.length >= 4 && G.mode === 'over',
+      'bolas=' + seen.join(',') + '  total=' + G.ballsTotal);
 
 REPORT('');
 REPORT('=== atracao: padroes binarios ===');
