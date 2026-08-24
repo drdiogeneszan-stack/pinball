@@ -1686,10 +1686,29 @@ function drawPanel() {
   pb.addColorStop(0, "#1B6E8C"); pb.addColorStop(1, BR.cyan);
   ctx.fillStyle = pb; ctx.fillRect(16, y0 + 106, 300 * pct, 5);
 
-  label("HIGH", 330, y0 + 96, "rgba(150,180,225,.6)");
-  ctx.font = "bold 12px Consolas, monospace";
+  // balls still in reserve, drawn as the chrome balls they are
+  label("RESERVA", 330, y0 + 96, "rgba(150,180,225,.6)");
+  const reserve = Math.max(0, G.ballsTotal - G.ball);
+  for (let i = 0; i < Math.min(reserve, 6); i++) {
+    const bx = 386 + i * 15, by = y0 + 93;
+    ctx.beginPath(); ctx.arc(bx + 1, by + 1.5, 5.4, 0, 7);
+    ctx.fillStyle = "rgba(0,0,0,.5)"; ctx.fill();
+    const bg = ctx.createRadialGradient(bx - 2, by - 2.2, .4, bx, by, 5.4);
+    bg.addColorStop(0, "#FFFFFF"); bg.addColorStop(.35, "#DCE8F8");
+    bg.addColorStop(.75, "#8095B8"); bg.addColorStop(1, "#26314F");
+    ctx.beginPath(); ctx.arc(bx, by, 5.4, 0, 7); ctx.fillStyle = bg; ctx.fill();
+  }
+  if (reserve === 0) {
+    ctx.font = "900 10px Lato, Tahoma, sans-serif";
+    ctx.fillStyle = "rgba(228,83,110,.9)";
+    ctx.fillText("ÚLTIMA", 386, y0 + 97);
+  }
+  ctx.font = "700 9px Lato, Tahoma, sans-serif";
+  ctx.fillStyle = "rgba(150,180,225,.55)";
+  ctx.fillText("RECORDE", 330, y0 + 116);
+  ctx.font = "900 11px Lato, Tahoma, sans-serif";
   ctx.fillStyle = "rgba(240,145,42,.85)";
-  ctx.fillText(G.hi.toLocaleString("pt-BR"), 362, y0 + 97);
+  ctx.fillText(G.hi.toLocaleString("pt-BR"), 386, y0 + 116);
 
   // message line — switches instantly, blinks hard for the big events
   const d = G.disp;
