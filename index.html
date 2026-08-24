@@ -504,6 +504,7 @@ const SFX = {
 const GRAV = 1400;
 const LAUNCH_MIN = 1500, LAUNCH_RANGE = 560;
 const SUBSTEPS = 7;
+const ROLL_FRICTION = 0.015;   // steel rail; the flipper keeps its own rubber grip
 const MAXSPEED = 2100;   // 5px per substep, well under the ball radius
 
 function segCollide(b, ax, ay, bx, by, e, mu) {
@@ -520,15 +521,24 @@ function segCollide(b, ax, ay, bx, by, e, mu) {
   b.x += nx * (b.r - d); b.y += ny * (b.r - d);
   const vn = b.vx * nx + b.vy * ny;
   if (vn < 0) {
-    // Coulomb friction: capped by the normal impulse, so a ball grazing a
-    // near-vertical wall isn't held up by friction alone.
-    const jn = -(1 + e) * vn;
+    // A ball in sustained contact is rolling along steel, not slamming into it.
+    // Applied flat, restitution multiplies the per-substep gravity impulse by
+    // (1+e) and sliding friction then scrubs mu*jn off the tangent — seven times
+    // a frame. That works out to a permanent ~350px/s^2 drag, which ate about
+    // three quarters of the ball's speed on the way down an inlane. So both
+    // coefficients fade out as the closing speed drops: a real impact still
+    // bounces and scrubs, a rolling ball keeps its momentum.
+    const impact = -vn;
+    const k = Math.min(1, Math.max(0, (impact - 25) / 110));
+    const eEff = e * k;
+    const muEff = ROLL_FRICTION + (mu - ROLL_FRICTION) * k;
+    const jn = -(1 + eEff) * vn;
     b.vx += nx * jn; b.vy += ny * jn;
     const dot = b.vx * nx + b.vy * ny;
     const tvx = b.vx - dot * nx, tvy = b.vy - dot * ny;
     const tv = Math.hypot(tvx, tvy);
     if (tv > 1e-6) {
-      const jt = Math.min(tv, mu * jn);
+      const jt = Math.min(tv, muEff * jn);
       b.vx -= tvx / tv * jt; b.vy -= tvy / tv * jt;
     }
   }
@@ -606,14 +616,23 @@ function flipperCollide(b, f) {
   const rvx = b.vx - ux, rvy = b.vy - uy;
   const vn = rvx * nx + rvy * ny;
   if (vn < 0) {
-    const e = 0.38;
+    // Same rolling model as the rails. Sustained contact was scrubbing 0.7*jn off
+    // the tangent every substep, which is what made the ball visibly wilt as it
+    // reached the flipper. The cradle does not depend on this friction — the ball
+    // is held in the crook between the raised flipper and the inlane lip, which
+    // is geometry — so a rolling ball can keep its speed. A real strike still
+    // gets the full grip of the rubber.
+    const impact = -vn;
+    const k = Math.min(1, Math.max(0, (impact - 25) / 110));
+    const e = 0.38 * k;
+    const mu = ROLL_FRICTION + (0.7 - ROLL_FRICTION) * k;
     const jn = -(1 + e) * vn;
     b.vx += nx * jn; b.vy += ny * jn;
     const dot = (b.vx - ux) * nx + (b.vy - uy) * ny;
     const tvx = (b.vx - ux) - dot * nx, tvy = (b.vy - uy) - dot * ny;
     const tv = Math.hypot(tvx, tvy);
     if (tv > 1e-6) {
-      const jt = Math.min(tv, 0.7 * jn);   // grippy rubber: you can cradle a ball
+      const jt = Math.min(tv, mu * jn);
       b.vx -= tvx / tv * jt; b.vy -= tvy / tv * jt;
     }
     return { speed: -vn };
