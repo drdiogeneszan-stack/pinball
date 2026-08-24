@@ -65,7 +65,7 @@ function mkEl(id) {
     },
     addEventListener: rec(LISTENERS[id] = LISTENERS[id] || {}),
     appendChild() {}, setAttribute() {}, focus() {}, click() {},
-    querySelector: () => mkEl(), querySelectorAll: () => [], closest: () => null,
+    value: '', querySelector: () => mkEl(), querySelectorAll: () => [], closest: () => null,
   };
 }
 
@@ -108,6 +108,15 @@ function fire(where, type, ev) {
   return hs.length;
 }
 
+// real in-memory localStorage so persistence can actually be tested
+const LSDATA = {};
+const LS = {
+  getItem: (k) => (k in LSDATA ? LSDATA[k] : null),
+  setItem: (k, v) => { LSDATA[k] = String(v); },
+  removeItem: (k) => { delete LSDATA[k]; },
+  clear: () => { for (const k in LSDATA) delete LSDATA[k]; },
+};
+
 globalThis.innerWidth = 480;
 globalThis.innerHeight = 900;
 
@@ -124,21 +133,21 @@ const fn = new Function(
   'document', 'window', 'localStorage', 'requestAnimationFrame', 'addEventListener',
   'setInterval', 'setTimeout', 'clearTimeout', 'console', 'REPORT',
   'flushTimers', 'resetTimers', 'Image', 'matchMedia', 'LISTENERS', 'fire', 'ELS', 'HEAD',
-  'location', 'setCoarse',
+  'location', 'setCoarse', 'LS',
   src + '\n;(function(){' + test + '})();'
 );
 
 try {
   fn(document,
     { devicePixelRatio: 1, AudioContext: undefined, webkitAudioContext: undefined },
-    { getItem: () => null, setItem() {}, removeItem() {} },
+    LS,
     () => {}, rec(LISTENERS.win), () => 0, setTimeoutStub, () => {},
     { log: (s) => out.push(String(s)) },
     REPORT, flushTimers, resetTimers, ImageStub,
     (q) => ({ matches: /coarse/.test(q) ? COARSE : false }),
     LISTENERS, fire, ELS, HEAD,
     { href: 'https://example.com/pinball/' },
-    (v) => { COARSE = v; });
+    (v) => { COARSE = v; }, LS);
 } catch (e) {
   process.stdout.write(out.join('\n') + '\n');
   console.error('\nEXCECAO:', e && e.stack ? e.stack : e);

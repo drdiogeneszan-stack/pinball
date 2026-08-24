@@ -32,7 +32,11 @@ for (let r = 0; r < 5; r++) {
 degraus.forEach((d, i) => REPORT('  entrada ' + (i + 1) + ': ' + (d.nome + '            ').slice(0, 13) +
   ' +' + String(d.pts).padStart(7) + ' pts  ' + (d.bolas ? '+1 bola' : '       ') + '  degrau=' + d.step));
 check('quatro degraus distintos', new Set(degraus.slice(0, 4).map(d => d.nome)).size === 4);
-check('bola extra concedida duas vezes', degraus.filter(d => d.bolas).length === 2, G.ballsTotal + ' bolas no total');
+// so o degrau BOLA EXTRA concede, e ate o teto; REPLAY paga em pontos
+check('so o degrau de bola extra concede', degraus.filter(d => d.bolas).length === 1,
+      degraus.filter(d => d.bolas).map(d => d.nome).join(',') || 'nenhum');
+check('REPLAY paga em pontos, nao em bola', degraus[3].nome === 'REPLAY' && degraus[3].bolas === 0,
+      degraus[3].nome + ' +' + degraus[3].pts);
 check('escada reinicia depois do 4o', degraus[4].nome === degraus[0].nome, degraus[4].nome);
 check('bola e cuspida de volta na calha', degraus[0].naCalha === true);
 check('e entao disparada de volta ao campo', ball.y < 560 || ball.x < 340,

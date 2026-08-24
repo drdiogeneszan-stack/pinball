@@ -84,7 +84,7 @@ canvas#table {
 
 /* ---------- help sheet ---------- */
 
-#sheet {
+#sheet, #board {
   position: absolute;
   inset: 0;
   display: grid;
@@ -94,8 +94,8 @@ canvas#table {
   backdrop-filter: blur(3px);
   z-index: 10;
 }
-#sheet[hidden] { display: none; }
-#sheet .card {
+#sheet[hidden], #board[hidden] { display: none; }
+#sheet .card, #board .card {
   width: min(100%, 430px);
   max-height: 88%;
   overflow-y: auto;
@@ -105,18 +105,18 @@ canvas#table {
   background: linear-gradient(160deg, #262B5E, #171B3E 60%, #12152F);
   box-shadow: 0 24px 60px rgba(0,0,0,.6);
 }
-#sheet h2 {
+#sheet h2, #board h2 {
   margin: 0 0 4px;
   font: 900 20px/1.15 var(--brand);
   letter-spacing: -.01em;
 }
-#sheet .eyebrow {
+#sheet .eyebrow, #board .eyebrow {
   font: 700 9px/1 var(--brand);
   letter-spacing: .22em;
   color: var(--cyan);
   margin-bottom: 10px;
 }
-#sheet p { margin: 0 0 14px; font-size: 12.5px; line-height: 1.6; color: rgba(237,244,246,.78); }
+#sheet p, #board p { margin: 0 0 14px; font-size: 12.5px; line-height: 1.6; color: rgba(237,244,246,.78); }
 #sheet dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 7px 14px; font-size: 12px; }
 #sheet dt {
   font: 700 10px/1.5 var(--brand);
@@ -125,7 +125,7 @@ canvas#table {
   white-space: nowrap;
 }
 #sheet dd { margin: 0; color: rgba(237,244,246,.8); line-height: 1.5; }
-#sheet .close {
+#sheet .close, #board .close {
   margin-top: 20px;
   width: 100%;
   appearance: none;
@@ -138,7 +138,93 @@ canvas#table {
   letter-spacing: .14em;
   cursor: pointer;
 }
-#sheet .close:hover { filter: brightness(1.1); }
+#sheet .close:hover, #board .close:hover { filter: brightness(1.1); }
+
+/* ---------- ranking ---------- */
+#board ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+#board li {
+  display: grid;
+  grid-template-columns: 26px 1fr auto;
+  gap: 10px;
+  align-items: baseline;
+  padding: 7px 9px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  background: rgba(255,255,255,.03);
+}
+#board li.me { background: rgba(87,194,224,.18); box-shadow: inset 0 0 0 1px rgba(87,194,224,.4); }
+#board li .pos { font: 900 11px var(--brand); color: var(--cyan); }
+#board li .who { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#board li .pts { font-variant-numeric: tabular-nums; font-weight: 900; color: var(--amber); }
+#board li .rk { grid-column: 2 / -1; font-size: 9.5px; letter-spacing: .1em; color: rgba(237,244,246,.45); }
+#board .empty { color: rgba(237,244,246,.5); font-size: 12px; padding: 14px 0; }
+#board form { display: flex; gap: 8px; margin: 0 0 16px; }
+#board input {
+  flex: 1;
+  appearance: none;
+  border: 1px solid rgba(87,194,224,.45);
+  border-radius: 7px;
+  background: rgba(9,12,34,.7);
+  color: var(--mist);
+  font: 900 15px/1 var(--brand);
+  letter-spacing: .12em;
+  padding: 11px 12px;
+  text-transform: uppercase;
+}
+#board input:focus { outline: 2px solid var(--cyan); outline-offset: 1px; }
+#board form button {
+  appearance: none; border: 0; border-radius: 7px; padding: 0 16px;
+  background: var(--amber); color: #2A1600;
+  font: 900 11px var(--brand); letter-spacing: .12em; cursor: pointer;
+}
+
+/* ---------- touch controls ---------- */
+/* On a phone there was nothing to press: you had to guess that the halves of
+   the table were the flippers. These are visible, finger-sized, and they sit
+   over the console where they cover nothing that matters. */
+
+#pads { display: none; }
+
+@media (pointer: coarse) {
+  #pads {
+    position: absolute;
+    left: 0; right: 0;
+    bottom: max(8px, env(safe-area-inset-bottom));
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    padding: 0 10px;
+    gap: 10px;
+    z-index: 4;
+    pointer-events: none;
+  }
+  #pads button {
+    pointer-events: auto;
+    appearance: none;
+    border: 1px solid rgba(87,194,224,.42);
+    border-radius: 14px;
+    background: rgba(20,26,74,.5);
+    backdrop-filter: blur(8px);
+    color: var(--mist);
+    font: 900 10px/1 var(--brand);
+    letter-spacing: .14em;
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    transition: background .08s, transform .08s;
+  }
+  #pads .flip { flex: 1 1 0; max-width: 40%; height: 84px; }
+  #pads .plunge { flex: 0 0 auto; width: 74px; height: 60px; border-radius: 12px; }
+  #pads button.down {
+    background: rgba(87,194,224,.55);
+    border-color: var(--mist);
+    transform: translateY(2px);
+  }
+
+  /* the corner strip becomes tappable instead of decorative */
+  #hud { opacity: 1; gap: 6px; }
+  #hud button { padding: 13px 12px; font-size: 10.5px; min-height: 44px; }
+}
 
 @media (prefers-reduced-motion: reduce) {
   * { transition-duration: .01ms !important; }
@@ -152,8 +238,30 @@ canvas#table {
     <button data-act="new">NOVO</button>
     <button data-act="pause">PAUSA</button>
     <button data-act="sound" aria-pressed="true">SOM</button>
+    <button data-act="rank">RANKING</button>
     <button data-act="help">AJUDA</button>
     <button data-act="full">TELA CHEIA</button>
+  </div>
+
+  <div id="pads">
+    <button class="flip" data-pad="L" aria-label="Flipper esquerdo">ESQ</button>
+    <button class="plunge" data-pad="P" aria-label="Lançar a bola">LANÇAR</button>
+    <button class="flip" data-pad="R" aria-label="Flipper direito">DIR</button>
+  </div>
+
+  <div id="board" hidden>
+    <div class="card">
+      <div class="eyebrow">IMCELER PINBALL</div>
+      <h2 id="boardTitle">Ranking</h2>
+      <p id="boardSub"></p>
+      <form id="nameForm" hidden>
+        <input id="nameInput" maxlength="12" autocomplete="off" autocapitalize="characters"
+               spellcheck="false" placeholder="SEU NOME" aria-label="Seu nome">
+        <button type="submit">GRAVAR</button>
+      </form>
+      <ol id="boardList"></ol>
+      <button class="close">FECHAR</button>
+    </div>
   </div>
 
   <div id="sheet" hidden>
@@ -295,6 +403,7 @@ const G = {
   skillFreeze: -1,   // lamp frozen at the moment of launch
   skillUntil: 0,
   hyperStep: 0,      // rung of the hyperspace ladder
+  extraBalls: 0,     // capped, or the ladder becomes an infinite ball machine
   fx: [],            // shockwave rings
   shown: 0,          // score the console is currently showing (rolls up)
   strobe: 0,         // whole-table lamp strobe on promotion
@@ -695,11 +804,16 @@ function hitLane(ln) {
 
 // Each trip into hyperspace climbs one rung of a ladder, and the ball is spat
 // back out through the launch lane instead of popping straight up.
+// The ladder resets and can be climbed again all game, so handing out a ball on
+// two of its four rungs made games literally endless — measured at 8.4 balls and
+// still running after ten minutes. Extra balls are capped; past the cap the rung
+// pays points instead, and REPLAY never was a ball in a real machine.
+const MAX_EXTRA_BALLS = 2;
 const LADDER = [
   { name: "GRAVITY WELL", points: 5000 },
-  { name: "BOLA EXTRA", points: 2000, extraBall: true },
+  { name: "BOLA EXTRA", points: 2000, extraBall: true, insteadPoints: 25000 },
   { name: "JACKPOT", points: 50000, mult: true },
-  { name: "REPLAY", points: 100000, extraBall: true },
+  { name: "REPLAY", points: 100000 },
 ];
 
 function enterHyperspace() {
@@ -712,11 +826,18 @@ function enterHyperspace() {
 
   const rung = LADDER[Math.min(G.hyperStep, LADDER.length - 1)];
   G.hyperStep = Math.min(LADDER.length, G.hyperStep + 1);
-  const pts = rung.mult ? rung.points * G.mult : rung.points;
+  const canGrant = rung.extraBall && G.extraBalls < MAX_EXTRA_BALLS;
+  const pts = canGrant ? rung.points
+            : rung.extraBall ? rung.insteadPoints
+            : rung.mult ? rung.points * G.mult : rung.points;
   G.score += pts;
-  if (rung.extraBall) G.ballsTotal++;
-  banner(rung.name, rung.extraBall ? "Bola extra concedida" : "", 2);
-  say(rung.name + "  " + pts.toLocaleString("pt-BR"), 2.6, 7, 1.4);
+  if (canGrant) { G.ballsTotal++; G.extraBalls++; }
+  const sub = canGrant
+    ? "Bola extra  " + G.extraBalls + " de " + MAX_EXTRA_BALLS
+    : rung.extraBall ? "Bolas extras esgotadas" : "";
+  banner(canGrant ? "BOLA EXTRA" : rung.name, sub, 2);
+  say((canGrant ? rung.name : rung.extraBall ? "SEM BOLA EXTRA" : rung.name) +
+      "  " + pts.toLocaleString("pt-BR"), 2.6, 7, 1.4);
   G.strobe = Math.max(G.strobe, 0.7);
   checkRank();
   paintConsole();
@@ -800,8 +921,9 @@ function gameOver() {
   } else {
     banner("FIM DE JOGO", RANKS[G.rankIdx][0] + " · F2 para jogar de novo", 999);
   }
-  status("Fim de jogo — pressione F2 para começar outro");
+  say("FIM DE JOGO", 6, 8, 1.5);
   paintConsole();
+  setTimeout(() => { if (G.mode === "over") showBoard(true); }, 1900);
 }
 
 function newBall() {
@@ -821,6 +943,7 @@ function newBall() {
 }
 
 function newGame() {
+  setPanel(board, false);
   G.score = 0; G.ball = 1; G.mult = 1; G.rankIdx = 0; G.bumperCount = 0;
   G.msgs.length = 0;
   G.fx.length = 0;
@@ -828,6 +951,7 @@ function newGame() {
   G.seq = null;      // a restart must abandon any bonus tally still running
   G.hyperStep = 0;
   G.ballsTotal = 3;
+  G.extraBalls = 0;
   G.skillUntil = 0; G.skillFreeze = -1;
   TARGETS.forEach(t => { t.down = false; });
   newBall();
@@ -1775,7 +1899,7 @@ const LEFT_KEYS = ["KeyZ", "KeyA", "ShiftLeft"];
 const RIGHT_KEYS = ["Slash", "KeyL", "ShiftRight", "Period"];
 
 addEventListener("keydown", e => {
-  if (!sheet.hidden && e.code !== "Escape" && e.code !== "Enter") return;
+  if (uiOpen() && e.code !== "Escape" && e.code !== "Enter") return;
   if (e.repeat) { if (e.code === "Space") e.preventDefault(); return; }
 
   if (LEFT_KEYS.includes(e.code)) { FLIPPERS[0].held = true; if (!G.tilted) SFX.flip(); }
@@ -1794,7 +1918,7 @@ addEventListener("keydown", e => {
     case "F2": e.preventDefault(); newGame(); break;
     case "F1": e.preventDefault(); showGuide(); break;
     case "KeyP": togglePause(); break;
-    case "Escape": setSheet(false); break;
+    case "Escape": setSheet(false); setPanel(board, false); break;
     case "Enter": if (!sheet.hidden) setSheet(false); break;
   }
 });
@@ -1861,6 +1985,47 @@ cv.addEventListener("pointerdown", e => {
   touchRole.set(e.pointerId, role);
 }, { passive: false });
 
+/* The on-screen pads own their pointer for its whole life, so sliding a thumb
+   off a pad still releases the flipper it was holding. Tapping the table halves
+   keeps working for anyone who already learned that. */
+const pads = $("pads");
+const padRole = new Map();
+
+function padPress(el, role) {
+  if (el.classList.contains("down")) return;
+  el.classList.add("down");
+  if (role === "L") { FLIPPERS[0].held = true; SFX.flip(); }
+  else if (role === "R") { FLIPPERS[1].held = true; SFX.flip(); }
+  else G.charging = true;
+}
+function padRelease(el, role) {
+  if (!el.classList.contains("down")) return;
+  el.classList.remove("down");
+  if (role === "L") { FLIPPERS[0].held = false; SFX.flipDown(); }
+  else if (role === "R") { FLIPPERS[1].held = false; SFX.flipDown(); }
+  else releasePlunger();
+}
+
+pads.addEventListener("pointerdown", e => {
+  const b = e.target.closest("button[data-pad]");
+  if (!b) return;
+  e.preventDefault();
+  audio();
+  if (G.mode === "attract" || G.mode === "over") { newGame(); return; }
+  b.setPointerCapture(e.pointerId);
+  padRole.set(e.pointerId, b);
+  padPress(b, b.dataset.pad);
+}, { passive: false });
+
+const endPad = e => {
+  const b = padRole.get(e.pointerId);
+  if (!b) return;
+  padRole.delete(e.pointerId);
+  padRelease(b, b.dataset.pad);
+};
+pads.addEventListener("pointerup", endPad);
+pads.addEventListener("pointercancel", endPad);
+
 function releasePointer(id) {
   const role = touchRole.get(id);
   if (role === undefined) return;
@@ -1890,16 +2055,104 @@ function wakeHud() {
   hudTimer = setTimeout(() => hud.classList.remove("awake"), 2600);
 }
 addEventListener("pointermove", wakeHud, { passive: true });
+addEventListener("pointerdown", wakeHud, { passive: true });
 
-function setSheet(open) {
-  sheet.hidden = !open;
+const board = $("board");
+const uiOpen = () => !sheet.hidden || !board.hidden;
+
+function setPanel(el, open) {
+  el.hidden = !open;
   if (open) {
     if (G.mode === "play") { G.resume = "play"; G.mode = "paused"; }
-    sheet.querySelector(".close").focus();
-  } else if (G.mode === "paused" && G.resume) {
+  } else if (!uiOpen() && G.mode === "paused" && G.resume) {
     G.mode = G.resume; G.resume = null;
   }
 }
+function setSheet(open) {
+  setPanel(sheet, open);
+  if (open) sheet.querySelector(".close").focus();
+}
+
+/* ==========================================================================
+   Ranking — top ten kept on this device, with a name typed in at the end
+   ========================================================================== */
+
+const SCORES_KEY = "imcelerPinballScores";
+const NAME_KEY = "imcelerPinballName";
+const TOP_N = 10;
+
+function loadScores() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(SCORES_KEY) || "[]");
+    return Array.isArray(raw) ? raw.filter(r => r && typeof r.score === "number") : [];
+  } catch (e) { return []; }
+}
+function saveScores(list) {
+  try { localStorage.setItem(SCORES_KEY, JSON.stringify(list.slice(0, TOP_N))); } catch (e) {}
+}
+function qualifies(score) {
+  if (score <= 0) return false;
+  const list = loadScores();
+  return list.length < TOP_N || score > list[list.length - 1].score;
+}
+
+function renderBoard(highlight) {
+  const list = loadScores();
+  const ol = $("boardList");
+  if (!list.length) {
+    ol.innerHTML = '<li class="empty">Nenhuma partida registrada ainda.</li>';
+    return;
+  }
+  ol.innerHTML = list.map((r, i) => {
+    const me = highlight != null && i === highlight ? " class=\"me\"" : "";
+    return "<li" + me + '><span class="pos">' + (i + 1) + '</span>' +
+      '<span class="who"></span><span class="pts">' + r.score.toLocaleString("pt-BR") + "</span>" +
+      '<span class="rk">' + (r.rank || "") + "</span></li>";
+  }).join("");
+  // names go in as text, never as markup
+  ol.querySelectorAll(".who").forEach((el, i) => { el.textContent = list[i].name || "—"; });
+}
+
+function showBoard(askName) {
+  const form = $("nameForm");
+  form.hidden = !askName;
+  $("boardTitle").textContent = askName ? "Fim de jogo" : "Ranking";
+  $("boardSub").textContent = askName
+    ? G.score.toLocaleString("pt-BR") + " pontos · " + RANKS[G.rankIdx][0] +
+      (qualifies(G.score) ? " — entrou no ranking!" : "")
+    : "Os dez melhores neste aparelho.";
+  renderBoard(null);
+  setPanel(board, true);
+  if (askName) {
+    const input = $("nameInput");
+    try { input.value = localStorage.getItem(NAME_KEY) || ""; } catch (e) {}
+    setTimeout(() => input.focus(), 60);
+  } else {
+    board.querySelector(".close").focus();
+  }
+}
+
+$("nameForm").addEventListener("submit", e => {
+  e.preventDefault();
+  const input = $("nameInput");
+  const name = (input.value || "").trim().toUpperCase().slice(0, 12) || "ANÔNIMO";
+  try { localStorage.setItem(NAME_KEY, name); } catch (e) {}
+  const list = loadScores();
+  const entry = { name, score: G.score, rank: RANKS[G.rankIdx][0], at: Date.now() };
+  list.push(entry);
+  list.sort((a, b) => b.score - a.score);
+  const idx = list.indexOf(entry);
+  saveScores(list);
+  $("nameForm").hidden = true;
+  $("boardTitle").textContent = "Ranking";
+  $("boardSub").textContent = idx < TOP_N ? "Você ficou em " + (idx + 1) + "º." : "Fora dos dez primeiros.";
+  renderBoard(idx < TOP_N ? idx : null);
+  SFX.prize();
+});
+
+board.addEventListener("click", e => {
+  if (e.target === board || e.target.classList.contains("close")) setPanel(board, false);
+});
 
 function fillKeys() {
   const rows = TOUCH ? [
@@ -1934,13 +2187,14 @@ hud.addEventListener("click", e => {
   audio();
   wakeHud();
   switch (b.dataset.act) {
-    case "new": setSheet(false); newGame(); break;
+    case "new": setSheet(false); setPanel(board, false); newGame(); break;
     case "pause": togglePause(); b.textContent = G.mode === "paused" ? "SEGUIR" : "PAUSA"; break;
     case "sound":
       G.sound = !G.sound;
       b.setAttribute("aria-pressed", String(G.sound));
       if (G.sound) audio();
       break;
+    case "rank": showBoard(false); break;
     case "help": fillKeys(); setSheet(true); break;
     case "full": toggleFullscreen(); break;
   }
@@ -2036,22 +2290,40 @@ function installAppIdentity() {
   link("icon", url, "image/png");
   link("apple-touch-icon", url);
 
-  try {
-    const manifest = {
-      name: "IMCELER Pinball — Space Cadet",
-      short_name: "IMCELER Pinball",
-      description: "Pinball Space Cadet com a identidade visual do IMCELER.",
-      display: "standalone",
-      orientation: "portrait",
-      background_color: "#0B0E24",
-      theme_color: "#141A4A",
-      start_url: (typeof location !== "undefined" ? location.href.split("#")[0] : "."),
-      icons: [{ src: url, sizes: "512x512", type: "image/png", purpose: "any maskable" }],
-    };
-    const json = JSON.stringify(manifest);
-    const b64 = btoa(String.fromCharCode.apply(null, new TextEncoder().encode(json)));
-    link("manifest", "data:application/manifest+json;base64," + b64);
-  } catch (e) { /* manifest is a bonus; the game does not need it */ }
+  // Served from a real origin there are sibling files — a proper manifest and a
+  // service worker — which make the game installable and playable offline. As a
+  // single loose file, or inside a sandbox, those 404 and we fall back to a
+  // manifest built from a data URI. Either way nothing breaks.
+  const dataManifest = () => {
+    try {
+      const manifest = {
+        name: "IMCELER Pinball — Space Cadet",
+        short_name: "IMCELER Pinball",
+        description: "Pinball Space Cadet com a identidade visual do IMCELER.",
+        display: "standalone",
+        orientation: "portrait",
+        background_color: "#0B0E24",
+        theme_color: "#141A4A",
+        start_url: (typeof location !== "undefined" ? location.href.split("#")[0] : "."),
+        icons: [{ src: url, sizes: "512x512", type: "image/png", purpose: "any maskable" }],
+      };
+      const json = JSON.stringify(manifest);
+      const b64 = btoa(String.fromCharCode.apply(null, new TextEncoder().encode(json)));
+      link("manifest", "data:application/manifest+json;base64," + b64);
+    } catch (e) { /* a manifest is a bonus; the game does not need one */ }
+  };
+
+  if (typeof fetch === "function") {
+    fetch("manifest.webmanifest", { method: "GET" })
+      .then(r => {
+        if (!r.ok) throw new Error("no manifest");
+        link("manifest", "manifest.webmanifest");
+        if (navigator.serviceWorker && location.protocol.startsWith("http")) {
+          navigator.serviceWorker.register("sw.js").catch(() => {});
+        }
+      })
+      .catch(dataManifest);
+  } else dataManifest();
 }
 
 function start() {
