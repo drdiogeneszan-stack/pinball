@@ -34,3 +34,9 @@ for (const pt of [[120,650],[240,650],[372,690],[180,300],[60,450]]) {
 check('erro de mapeamento abaixo de 1px', erro<1, 'maior erro '+erro.toFixed(3)+'px');
 REPORT('');
 REPORT(fails===0?'>>> FORMATO OK':'>>> '+fails+' FALHA(S)');
+
+REPORT('');
+REPORT('=== a fonte da marca desenha de verdade? ===');
+check('familia em uso definida', typeof BRAND_FONT === 'string', BRAND_FONT);
+check('verificador existe e nao derruba o jogo', typeof verifyBrandFont === 'function' && verifyBrandFont() === true,
+      'sem getImageData no harness, ele nao julga e segue com a marca');
