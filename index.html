@@ -958,14 +958,17 @@ function gameOver() {
   G.mode = "over";
   if (G.score > G.hi) {
     G.hi = G.score;
-    try { localStorage.setItem("spaceCadetHi", String(G.hi)); } catch (e) {}
+    store.set("spaceCadetHi", String(G.hi));
     banner("FIM DE JOGO", "NOVO RECORDE — " + RANKS[G.rankIdx][0], 999);
   } else {
     banner("FIM DE JOGO", RANKS[G.rankIdx][0] + " · F2 para jogar de novo", 999);
   }
   say("FIM DE JOGO", 6, 8, 1.5);
   paintConsole();
-  setTimeout(() => { if (G.mode === "over") showBoard(true); }, 1900);
+  // Opened straight away, not after a delay. A tap while the game is over starts
+  // a new one, so any player who touched the screen during that gap never got
+  // asked for a name and their score was silently thrown away.
+  showBoard(true);
 }
 
 function newBall() {
@@ -2042,6 +2045,10 @@ const touchRole = new Map();
 cv.addEventListener("pointerdown", e => {
   audio();
   if (e.pointerType !== "mouse") e.preventDefault();
+  // A panel on top owns the interaction. Without this the game only relies on
+  // the overlay covering the canvas, and an impatient tap over a game-over
+  // prompt would start a new game and throw the score away.
+  if (uiOpen()) return;
   if (G.mode === "attract" || G.mode === "over") { newGame(); return; }
   const p = viewPoint(e);
   const sx = p.x, sy = p.y;
@@ -2082,6 +2089,7 @@ pads.addEventListener("pointerdown", e => {
   if (!b) return;
   e.preventDefault();
   audio();
+  if (uiOpen()) return;
   if (G.mode === "attract" || G.mode === "over") { newGame(); return; }
   b.setPointerCapture(e.pointerId);
   padRole.set(e.pointerId, b);
@@ -2148,18 +2156,49 @@ function setSheet(open) {
    Ranking — top ten kept on this device, with a name typed in at the end
    ========================================================================== */
 
+/* Swallowing storage errors made the game lie: with localStorage unavailable it
+   still announced "you came 1st" while nothing had been written, which reads
+   exactly like a ranking that quietly refuses to save. Private browsing on iOS,
+   a sandboxed frame and a full quota all land here. Now failures are visible and
+   the session still keeps a list in memory, so a game is never wasted. */
+const store = (() => {
+  const mem = Object.create(null);
+  let ok = false;
+  try {
+    localStorage.setItem("__probe__", "1");
+    localStorage.removeItem("__probe__");
+    ok = true;
+  } catch (e) { ok = false; }
+  return {
+    get available() { return ok; },
+    get(k) {
+      try { if (ok) return localStorage.getItem(k); } catch (e) { ok = false; }
+      return k in mem ? mem[k] : null;
+    },
+    set(k, v) {
+      mem[k] = String(v);
+      try { if (ok) { localStorage.setItem(k, String(v)); return true; } } catch (e) { ok = false; }
+      return false;
+    },
+    remove(k) {
+      delete mem[k];
+      try { if (ok) localStorage.removeItem(k); } catch (e) { ok = false; }
+    },
+  };
+})();
+
 const SCORES_KEY = "imcelerPinballScores";
 const NAME_KEY = "imcelerPinballName";
 const TOP_N = 10;
 
 function loadScores() {
   try {
-    const raw = JSON.parse(localStorage.getItem(SCORES_KEY) || "[]");
+    const raw = JSON.parse(store.get(SCORES_KEY) || "[]");
     return Array.isArray(raw) ? raw.filter(r => r && typeof r.score === "number") : [];
   } catch (e) { return []; }
 }
 function saveScores(list) {
-  try { localStorage.setItem(SCORES_KEY, JSON.stringify(list.slice(0, TOP_N))); } catch (e) {}
+  return store.set(SCORES_KEY, JSON.stringify(list.slice(0, TOP_N)));
 }
 function qualifies(score) {
   if (score <= 0) return false;
@@ -2191,12 +2230,13 @@ function showBoard(askName) {
   $("boardSub").textContent = askName
     ? G.score.toLocaleString("pt-BR") + " pontos · " + RANKS[G.rankIdx][0] +
       (qualifies(G.score) ? " — entrou no ranking!" : "")
-    : "Os dez melhores neste aparelho.";
+    : (store.available ? "Os dez melhores neste aparelho."
+                       : "Armazenamento indisponível — este ranking vale só até fechar a aba.");
   renderBoard(null);
   setPanel(board, true);
   if (askName) {
     const input = $("nameInput");
-    try { input.value = localStorage.getItem(NAME_KEY) || ""; } catch (e) {}
+    input.value = store.get(NAME_KEY) || "";
     setTimeout(() => input.focus(), 60);
   } else {
     board.querySelector(".close").focus();
@@ -2207,16 +2247,19 @@ $("nameForm").addEventListener("submit", e => {
   e.preventDefault();
   const input = $("nameInput");
   const name = (input.value || "").trim().toUpperCase().slice(0, 12) || "ANÔNIMO";
-  try { localStorage.setItem(NAME_KEY, name); } catch (e) {}
+  store.set(NAME_KEY, name);
   const list = loadScores();
   const entry = { name, score: G.score, rank: RANKS[G.rankIdx][0], at: Date.now() };
   list.push(entry);
   list.sort((a, b) => b.score - a.score);
   const idx = list.indexOf(entry);
-  saveScores(list);
+  const gravou = saveScores(list);
   $("nameForm").hidden = true;
   $("boardTitle").textContent = "Ranking";
-  $("boardSub").textContent = idx < TOP_N ? "Você ficou em " + (idx + 1) + "º." : "Fora dos dez primeiros.";
+  $("boardSub").textContent =
+    (idx < TOP_N ? "Você ficou em " + (idx + 1) + "º." : "Fora dos dez primeiros.") +
+    (gravou ? "" : " Não foi possível salvar neste aparelho — o ranking vale só até fechar a aba. " +
+                   "Costuma ser navegação privada ou armazenamento bloqueado.");
   renderBoard(idx < TOP_N ? idx : null);
   SFX.prize();
 });
@@ -2459,7 +2502,7 @@ function start() {
   installAppIdentity();
   G.shown = 0;
 
-  try { G.hi = Number(localStorage.getItem("spaceCadetHi")) || 0; } catch (e) { G.hi = 0; }
+  G.hi = Number(store.get("spaceCadetHi")) || 0;
 
   G.mode = "attract";
   banner("SPACE CADET", TOUCH ? "Toque na mesa para começar" : "Pressione ESPAÇO para começar", 999);
